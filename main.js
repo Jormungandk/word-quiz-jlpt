@@ -27,7 +27,7 @@ class WordQuiz {
 
     async fetchQuizData() {
         try {
-            const response = await fetch('quiz.json');
+            const response = await fetch('./data/quiz.json');
             this.quizData = await response.json();
         } catch (e) {
             this.rootElm.innerText = '問題の読み込みに失敗しました';
