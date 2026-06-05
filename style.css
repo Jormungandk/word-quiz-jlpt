@@ -1,0 +1,86 @@
+:root {
+    /* Палитра: "Профессиональная" (Светлая) */
+    --bg-color: #FFFFFF;
+    --text-color: #1A191A;
+    --card-bg: #F8F9FA;
+    --border-color: #DEE2E6;
+    --btn-primary: #0056B3;
+    --btn-danger: #D32F2F;
+    --btn-secondary: #6c757d;
+    --color-correct: #27AE60;
+    --color-wrong: #E74C3C;
+    --color-skipped-badge: #F1C40F;
+    --color-skipped-bg: #AED6F1;
+}
+
+.dark-theme {
+    /* Палитра: "Ночная" (Deep Focus) */
+    --bg-color: #1E1E2E;
+    --text-color: #E0E0E0;
+    --card-bg: #2D2D44;
+    --border-color: #444466;
+    --btn-primary: #7B61FF;
+    --btn-danger: #E91E63;
+    --btn-secondary: #4A4A6A;
+    --color-correct: #2ECC71;
+    --color-wrong: #FF5252;
+    --color-skipped-badge: #F1C40F;
+    --color-skipped-bg: #2E5A80;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: sans-serif;
+    transition: background-color 0.3s, color 0.3s;
+    margin: 0;
+    padding: 0;
+}
+
+/* Контейнер для центрирования */
+.quiz-container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.btn {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    color: white;
+    transition: background-color 0.3s;
+}
+
+.btn-primary { background-color: var(--btn-primary); }
+.btn-danger { background-color: var(--btn-danger); }
+.btn-secondary { background-color: var(--btn-secondary); }
+
+.card {
+    margin-bottom: 15px;
+    padding: 15px;
+    background: var(--card-bg);
+    border-radius: 8px;
+    border-left: 5px solid var(--btn-primary);
+    transition: background-color 0.3s, border-color 0.3s;
+}
+
+.admin-panel {
+    background-color: var(--card-bg);
+    padding: 20px;
+    border-radius: 8px;
+    transition: background-color 0.3s;
+}
+
+.badge { padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+.badge-correct { background: var(--color-correct); color: white; }
+.badge-wrong { background: var(--color-wrong); color: white; }
+.badge-skipped { background: var(--color-skipped-badge); color: black; }
+
+.status-correct { color: var(--color-correct); font-weight: bold; }
+.status-wrong { color: var(--color-wrong); text-decoration: line-through; }
+.status-hint { color: var(--btn-primary); font-weight: bold; }
+
+.review-skipped { background-color: var(--color-skipped-bg) !important; }
