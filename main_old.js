@@ -1,8 +1,15 @@
 class WordQuiz {
     constructor(rootElm) {
         this.rootElm = rootElm;
-        this.gameState = {};
-        this.resetGame();
+        this.gameState = {
+            category: null,
+            step: 1,
+            currentQuizKeys: [],
+            results: [],
+            currentLevel: 'n2',
+            intervalKey: null,
+            timeLimit: 60
+        };
     }
 
     addThemeToggle() {
@@ -12,35 +19,115 @@ class WordQuiz {
         toggleBtn.style.position = 'fixed';
         toggleBtn.style.top = '10px';
         toggleBtn.style.right = '10px';
+
+        // 1. При инициализации кнопки проверяем, сохраняли ли мы темную тему ранее
+        if (localStorage.getItem('theme') === 'dark') {
+            document.body.classList.add('dark-theme');
+        }
+
+        // 2. При клике переключаем класс и сразу записываем новый выбор в память
         toggleBtn.addEventListener('click', () => {
             document.body.classList.toggle('dark-theme');
+            
+            if (document.body.classList.contains('dark-theme')) {
+                localStorage.setItem('theme', 'dark');
+            } else {
+                localStorage.setItem('theme', 'light');
+            }
         });
+
         document.body.appendChild(toggleBtn);
     }
 
     async init() {
-        this.addThemeToggle(); // Добавляем кнопку переключения
-        this.rootElm.classList.add('quiz-container'); // Применяем класс центрирования
-        await this.fetchQuizData();
+        this.addThemeToggle();
+        this.rootElm.classList.add('quiz-container');
+
+        window.addEventListener('beforeunload', (event) => {
+            if (this.gameState && this.gameState.intervalKey !== null) {
+                event.preventDefault();
+                event.returnValue = '';
+            }
+        });
+
+        const saved = sessionStorage.getItem('quizState');
+        if (saved) {
+            const parsedState = JSON.parse(saved);
+            if (parsedState.currentQuizKeys && parsedState.currentQuizKeys.length > 0) {
+                this.gameState = parsedState;
+                this.gameState.intervalKey = null; // Сбрасываем старый таймер
+                
+                // ВОТ ЭТА СТРОКА ИСПРАВЛЯЕТ ОШИБКУ:
+                // Восстанавливаем текущий уровень класса из сохраненной сессии
+                this.currentLevel = this.gameState.currentLevel || 'n2'; 
+                
+                await this.fetchQuizData(this.currentLevel);
+                this.displayQuestionView();
+                return;
+            }
+        }
+
+        this.displayMainMenu();
+    }
+
+    displayMainMenu() {
+        const html = `
+            <h1 style="text-align:center;">Welcome to JLPT Prep</h1>
+            <p style="text-align:center; color: var(--text-color); opacity: 0.8;">Выберите уровень:</p>
+            <div class="level-grid">
+                <button class="level-btn" onclick="quiz.loadLevel('n5')">N5</button>
+                <button class="level-btn" onclick="quiz.loadLevel('n4')">N4</button>
+                <button class="level-btn" onclick="quiz.loadLevel('n3')">N3</button>
+                <button class="level-btn" onclick="quiz.loadLevel('n2')">N2</button>
+                <button class="level-btn" onclick="quiz.loadLevel('n1')">N1</button>
+            </div>
+        `;
+        const container = document.createElement('div');
+        container.innerHTML = html;
+        this.replaceView(container);
+    }
+
+    // Метод загрузки данных по уровню
+    async loadLevel(level) {
+        this.currentLevel = level; // Сохраняем текущий уровень (например, 'n3')
+        this.rootElm.innerHTML = '<p style="text-align:center;">Загрузка данных...</p>';
+        await this.fetchQuizData(level);
         this.displayStartView();
     }
 
-    async fetchQuizData() {
+    async fetchQuizData(level = 'n2') {
+        // 1. Очищаем старые данные, чтобы они не висели в памяти
+        this.quizData = null; 
+        
         try {
-            const response = await fetch('./data/quiz.json');
+            // 2. Добавляем cache: 'no-store', чтобы браузер не подсовывал старый N2
+            const response = await fetch(`data/${level}.json`, { cache: 'no-store' });
+            
+            // 3. fetch не бросает ошибку при 404, поэтому проверяем вручную
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
             this.quizData = await response.json();
         } catch (e) {
-            this.rootElm.innerText = '問題の読み込みに失敗しました';
+            // 4. Твой любимый стиль вывода ошибки
+            this.rootElm.innerHTML = `<div class="card">Уровень ${level.toUpperCase()} пока не доступен.</div>
+            <button class="btn btn-secondary" onclick="quiz.displayMainMenu()">Назад</button>`;
             console.error(e);
         }
     }
 
     resetGame() {
-        this.gameState.category = null; 
-        this.gameState.step = 1;
-        this.gameState.currentQuizKeys = []; 
-        this.gameState.results = []; 
-        this.clearTimer();            
+        this.clearTimer(); // СНАЧАЛА останавливаем таймер, пока мы не удалили intervalKey!
+        this.gameState = {
+            category: null,
+            step: 1,
+            currentQuizKeys: [],
+            results: [],
+            currentLevel: this.currentLevel || 'n2',
+            intervalKey: null,
+            timeLimit: 60
+        };
     }
 
     replaceView(elm) {
@@ -49,14 +136,18 @@ class WordQuiz {
     }
 
     setTimer() {
-        if (this.gameState.intervalKey !== null) {
-            throw new Error('まだタイマーが動いています');
+        if (this.gameState.intervalKey !== null) return;
+        
+        // Если времени нет (вдруг ошибка), ставим 60
+        if (typeof this.gameState.timeLimit === 'undefined') {
+            this.gameState.timeLimit = 60;
         }
-        this.gameState.timeLimit = 60; 
+
         this.gameState.intervalKey = setInterval(() => {
             this.gameState.timeLimit--;
+            this.saveState(); // Записываем каждую секунду, чтобы при F5 время не сбросилось
             
-            if (this.gameState.timeLimit === 0) {
+            if (this.gameState.timeLimit <= 0) {
                 this.addResult(true); 
                 this.nextStep();
             } else {
@@ -66,8 +157,10 @@ class WordQuiz {
     }
 
     clearTimer() {
-        clearInterval(this.gameState.intervalKey);
-        this.gameState.intervalKey = null;
+        if (this.gameState.intervalKey) {
+            clearInterval(this.gameState.intervalKey);
+            this.gameState.intervalKey = null;
+        }
     }
 
     renderTimeLimitStr() {
@@ -86,70 +179,59 @@ class WordQuiz {
         return shuffled;
     }
 
+    saveState() {
+        this.gameState.currentLevel = this.currentLevel;
+        sessionStorage.setItem('quizState', JSON.stringify(this.gameState));
+    }
+
+    loadSavedState() {
+        const saved = localStorage.getItem('quizState');
+        if (saved) {
+            this.gameState = JSON.parse(saved);
+            if (this.gameState.currentQuizKeys && this.gameState.currentQuizKeys.length > 0) return true;
+        }
+        return false;
+    }
+
     startQuiz(categoryId, mode = 'random', rangeStart = 1, rangeEnd = 20) {
         const allKeys = Object.keys(this.quizData[categoryId]).sort((a, b) => {
-            const numA = parseInt(a.replace('step', ''));
-            const numB = parseInt(b.replace('step', ''));
-            return numA - numB;
+            return parseInt(a.replace('step', '')) - parseInt(b.replace('step', ''));
         });
 
-        let selectedKeys = [];
-
-        if (mode === 'sequential') {
-            selectedKeys = allKeys.slice(rangeStart - 1, rangeEnd);
-        } else if (mode === 'random') {
-            const shuffled = this.shuffleArray(allKeys);
-            selectedKeys = shuffled.slice(0, 20);
-        }
-
         this.gameState.category = categoryId;
-        this.gameState.currentQuizKeys = selectedKeys;
+        this.gameState.currentQuizKeys = (mode === 'sequential') ? allKeys.slice(rangeStart - 1, rangeEnd) : this.shuffleArray(allKeys).slice(0, 20);
         this.gameState.step = 1;
         this.gameState.results = [];
+        this.gameState.timeLimit = 60; // Устанавливаем 60 сек для первого вопроса
 
         this.displayQuestionView();
+        this.saveState();
     }
 
     displayStartView() {
         let categoryHtml = '';
         const categories = [
-            { id: 'kanji_reading', name: '漢字・語彙 (Чтение)' },
-            { id: 'kanji_writing', name: '漢字表記 (Написание)' },
-            { id: 'affix_matching', name: '派生語・複合語 (Приставки/Суффиксы)' },
-            { id: 'grammar', name: '文法 (Грамматика)' }
+            { id: 'kanji_reading', name: '漢字・語彙' },
+            { id: 'kanji_writing', name: '漢字表記' },
+            { id: 'affix_matching', name: '派生語・複合語' },
+            { id: 'grammar', name: '文法' }
         ];
 
         categories.forEach(cat => {
             const keys = this.quizData[cat.id] ? Object.keys(this.quizData[cat.id]) : [];
             const total = keys.length;
-            
-            if (total === 0) {
-                categoryHtml += `
-                <div class="card" style="background: var(--btn-secondary); color: white;">
-                    <strong style="display: block; margin-bottom: 5px; font-size: 16px;">${cat.name}</strong>
-                    <span>問題がありません (Нет вопросов)</span>
-                </div>`;
-                return;
-            }
+            if (total === 0) return;
 
             let optionsHtml = '';
             for (let i = 0; i < total; i += 20) {
-                const start = i + 1;
-                const end = Math.min(i + 20, total);
-                optionsHtml += `<option value="${start}-${end}">${start}〜${end}</option>`;
+                optionsHtml += `<option value="${i+1}-${Math.min(i+20, total)}">${i+1}〜${Math.min(i+20, total)}</option>`;
             }
-
-            const selectStyle = total > 20 ? '' : 'display: none;';
-            const rangeLabel = total > 20 ? '' : `<span style="font-weight: bold; margin-right: 10px;">全${total}問</span>`;
 
             categoryHtml += `
                 <div class="card">
                     <strong style="font-size: 16px;">${cat.name}</strong>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top:10px;">
-                        ${rangeLabel}
-                        <select id="range-${cat.id}" style="${selectStyle} padding: 8px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color);">
-                            ${optionsHtml}
-                        </select>
+                        ${total > 20 ? `<select id="range-${cat.id}" style="padding: 8px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color);">${optionsHtml}</select>` : `<span>全${total}問</span>`}
                         <button class="btn btn-primary start-seq-btn" data-cat="${cat.id}">順番に開始</button>
                         <button class="btn btn-primary start-rnd-btn" data-cat="${cat.id}">ランダム</button>
                     </div>
@@ -158,12 +240,14 @@ class WordQuiz {
         });
 
         const html = `
-            <h2>JLPT N2 総合模擬クイズ</h2>
+            <h2>JLPT ${this.currentLevel.toUpperCase()} 総合模擬クイズ</h2>
             <div style="text-align: right; margin-bottom: 20px;">
                 <button class="btn btn-secondary adminBtn">⚙️ データベース管理</button>
             </div>
-            <p style="text-align:center; margin-bottom: 20px;">カテゴリーと出題モードを選択してください。</p>
             ${categoryHtml}
+            <div style="text-align:center; margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="quiz.displayMainMenu()">← 戻る</button>
+            </div>
         `;
 
         const parentElm = document.createElement('div');
@@ -208,35 +292,48 @@ class WordQuiz {
                     <label><input type="radio" name="admin-mode" value="new" checked> 新規追加</label>
                     <label style="margin-left: 15px;"><input type="radio" name="admin-mode" value="edit"> 既存編集</label>
                 </div>
+
                 <div>
                     <label style="font-weight: bold;">カテゴリー:</label><br>
                     <select id="admin-category" style="width: 100%; padding: 8px; background: var(--bg-color); color: var(--text-color);">
-                        <option value="kanji_reading">漢字・語彙</option>
-                        <option value="kanji_writing">漢字表記</option>
-                        <option value="affix_matching">派生語・複合語</option>
+                        <option value="kanji_reading">漢字・語彙 (文字の読み)</option>
+                        <option value="kanji_writing">漢字表記 (正しく書く)</option>
+                        <option value="affix_matching">派生語・複合語 (接頭辞・接尾辞)</option>
                         <option value="grammar">文法</option>
                     </select>
                 </div>
+
                 <div id="admin-question-selector-container" style="display: none;">
                     <label style="font-weight: bold;">編集する問題:</label><br>
-                    <select id="admin-question-select" style="width: 100%; padding: 8px; background: var(--bg-color); color: var(--text-color);"></select>
+                    <select id="admin-question-select" style="width: 100%; padding: 8px; background: var(--bg-color); color: var(--text-color);">
+                        <option value="">問題を選択してください...</option>
+                    </select>
                 </div>
+
                 <div>
-                    <label style="font-weight: bold;">問題文:</label>
-                    <textarea id="admin-word" rows="2" style="width: 100%; padding: 8px; background: var(--bg-color); color: var(--text-color);"></textarea>
+                    <label style="font-weight: bold;">問題文:</label><br>
+                    <span style="font-size: 12px; opacity: 0.7;">※下線は &lt;u&gt; と &lt;/u&gt; で囲んでください</span>
+                    <textarea id="admin-word" rows="2" style="width: 100%; padding: 8px; background: var(--bg-color); color: var(--text-color);" placeholder="例: 彼を<u>非難</u>するつもりはない。"></textarea>
                 </div>
+
                 <div>
-                    <label style="font-weight: bold;">選択肢:</label>
-                    <input type="text" id="admin-choices" style="width: 100%; padding: 8px; background: var(--bg-color); color: var(--text-color);">
+                    <label style="font-weight: bold;">選択肢:</label><br>
+                    <span style="font-size: 12px; opacity: 0.7;">※カンマ(,)区切りで4つ入力してください</span>
+                    <input type="text" id="admin-choices" style="width: 100%; padding: 8px; background: var(--bg-color); color: var(--text-color);" placeholder="例: ひなん, びなん, ひねん, はいなん">
                 </div>
+
                 <div>
-                    <label style="font-weight: bold;">正解:</label>
-                    <input type="text" id="admin-answer" style="width: 100%; padding: 8px; background: var(--bg-color); color: var(--text-color);">
+                    <label style="font-weight: bold;">正解:</label><br>
+                    <span style="font-size: 12px; opacity: 0.7;">※選択肢のいずれかと完全一致させてください</span>
+                    <input type="text" id="admin-answer" style="width: 100%; padding: 8px; background: var(--bg-color); color: var(--text-color);" placeholder="例: ひなん">
                 </div>
+
                 <div>
-                    <label style="font-weight: bold;">解説:</label>
-                    <textarea id="admin-explanation" rows="4" style="width: 100%; padding: 8px; background: var(--bg-color); color: var(--text-color);"></textarea>
+                    <label style="font-weight: bold;">解説:</label><br>
+                    <span style="font-size: 12px; opacity: 0.7;">※任意：改行はそのまま反映されます</span>
+                    <textarea id="admin-explanation" rows="4" style="width: 100%; padding: 8px; background: var(--bg-color); color: var(--text-color);" placeholder="例: 【意味】：〜を責めること。"></textarea>
                 </div>
+
                 <div class="actions" style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
                     <button class="btn btn-primary" id="saveQuestionBtn">保存</button>
                     <button class="btn btn-danger" id="deleteQuestionBtn" style="display: none;">削除</button>
@@ -503,7 +600,9 @@ class WordQuiz {
             this.displayResultView();
         } else {
             this.gameState.step++;
+            this.gameState.timeLimit = 60; // Устанавливаем 60 сек для следующего вопроса
             this.displayQuestionView();
+            this.saveState();
         }
     }
 
@@ -518,6 +617,9 @@ class WordQuiz {
     }
 
     displayResultView() {
+        sessionStorage.removeItem('quizState'); // Удаляем тест (чтобы F5 не кидал обратно)
+        this.gameState.currentQuizKeys = []; // Полностью очищаем активный список
+
         const correctCount = this.calcScore();
         const totalQuestions = this.gameState.results.length;
         const scorePercent = totalQuestions > 0 ? Math.floor((correctCount / totalQuestions) * 100) : 0;
@@ -586,4 +688,5 @@ class WordQuiz {
     }
 }
 
-new WordQuiz(document.getElementById('app')).init();
+window.quiz = new WordQuiz(document.getElementById('app'));
+window.quiz.init();

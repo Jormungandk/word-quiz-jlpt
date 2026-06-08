@@ -84,3 +84,26 @@ body {
 .status-hint { color: var(--btn-primary); font-weight: bold; }
 
 .review-skipped { background-color: var(--color-skipped-bg) !important; }
+
+.level-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.level-btn {
+    padding: 15px;
+    background: var(--btn-secondary);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.level-btn:hover {
+    background: var(--btn-primary);
+}
