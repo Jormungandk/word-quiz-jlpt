@@ -76,12 +76,30 @@ export class AppGame {
     }
 
     startQuiz(categoryId, mode = 'random', rangeStart = 1, rangeEnd = 20) {
-        const allKeys = Object.keys(this.quizData[categoryId]).sort((a, b) => {
-            return parseInt(a.replace('step', '')) - parseInt(b.replace('step', ''));
+        let sourceData = this.quizData[categoryId];
+
+        if (mode === 'custom') {
+            sourceData = this.app.user.profile.customQuestions?.[categoryId] || {};
+            if (Object.keys(sourceData).length === 0) {
+                alert('У вас пока нет сохраненных заданий в этой категории.');
+                return;
+            }
+        }
+
+        const allKeys = Object.keys(sourceData).sort((a, b) => {
+            return parseInt(a.replace(/\D/g, '')) - parseInt(b.replace(/\D/g, ''));
         });
 
         this.gameState.category = categoryId;
-        this.gameState.currentQuizKeys = (mode === 'sequential') ? allKeys.slice(rangeStart - 1, rangeEnd) : this.shuffleArray(allKeys).slice(0, 20);
+        this.gameState.isCustomMode = (mode === 'custom'); 
+        this.gameState.currentShuffledChoices = []; // Сброс перемешанных вариантов
+
+        if (mode === 'sequential') {
+            this.gameState.currentQuizKeys = allKeys.slice(rangeStart - 1, rangeEnd);
+        } else {
+            this.gameState.currentQuizKeys = this.shuffleArray(allKeys).slice(0, 20);
+        }
+
         this.gameState.step = 1;
         this.gameState.results = [];
         this.gameState.timeLimit = 60; 
@@ -91,8 +109,15 @@ export class AppGame {
     }
 
     addResult(isSkipped = false) {
-        const currentKey = this.gameState.currentQuizKeys[this.gameState.step - 1];
-        const currentQuestion = this.quizData[this.gameState.category][currentKey];
+        const state = this.gameState;
+        const currentKey = state.currentQuizKeys[state.step - 1];
+        
+        // ВАЖНО: Определяем, откуда брать вопрос (из глобальной базы или из блокнота)
+        const source = state.isCustomMode 
+            ? this.app.user.profile.customQuestions[state.category]
+            : this.quizData[state.category];
+            
+        const currentQuestion = source[currentKey];
         
         let answer = '';
         if (!isSkipped) {
@@ -112,11 +137,20 @@ export class AppGame {
         if (confirm("本当にテストを強制終了して結果画面へ進みますか？")) {
             this.clearTimer();
             const totalQuestions = this.gameState.currentQuizKeys.length;
+            
+            // ВАЖНО: Здесь тоже определяем правильный источник для оставшихся вопросов
+            const source = this.gameState.isCustomMode 
+                ? this.app.user.profile.customQuestions[this.gameState.category]
+                : this.quizData[this.gameState.category];
+
             while (this.gameState.results.length < totalQuestions) {
                 const nextKey = this.gameState.currentQuizKeys[this.gameState.results.length];
-                const nextQ = this.quizData[this.gameState.category][nextKey];
+                const nextQ = source[nextKey];
+                
                 this.gameState.results.push({
-                    question: nextQ, selectedAnswer: '', skipped: true,
+                    question: nextQ, 
+                    selectedAnswer: '', 
+                    skipped: true,
                     presentedChoices: this.shuffleArray(nextQ.choices)
                 });
             }

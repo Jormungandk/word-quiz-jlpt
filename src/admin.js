@@ -119,7 +119,6 @@ export class AppAdmin {
         parentElm.querySelector('#backBtn').addEventListener('click', () => this.app.ui.displayStartView());
 
         parentElm.querySelector('#saveQuestionBtn').addEventListener('click', async () => {
-            // Оставил логику отправки на сервер без изменений
             const mode = parentElm.querySelector('input[name="admin-mode"]:checked').value;
             const category = categorySelect.value;
             const stepKey = mode === 'edit' ? questionSelect.value : null;
@@ -140,8 +139,8 @@ export class AppAdmin {
             try {
                 const response = await fetch('/api/save_question', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    // ДОБАВИЛИ level: this.app.game.currentLevel
                     body: JSON.stringify({ 
+                        user_id: this.app.user.profile.id, // <--- ИСПРАВЛЕНО: Добавлен user_id
                         level: this.app.game.currentLevel, 
                         category, 
                         question: newQuestion, 
@@ -174,8 +173,8 @@ export class AppAdmin {
             try {
                 const response = await fetch('/api/delete_question', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    // ДОБАВИЛИ level: this.app.game.currentLevel
                     body: JSON.stringify({ 
+                        user_id: this.app.user.profile.id, // Здесь user_id уже был, всё отлично
                         level: this.app.game.currentLevel, 
                         category, 
                         stepKey 
